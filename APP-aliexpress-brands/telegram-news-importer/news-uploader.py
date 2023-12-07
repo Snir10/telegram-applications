@@ -202,7 +202,11 @@ def sendMediaGroup(items, reply_to_message_id=None):
     chunk_size = 50 * 1024 * 1024  # 50MB
     chunks = [media[i:i + chunk_size] for i in range(0, len(media), chunk_size)]
 
-    # Send each chunk as a separate media group item
+    # Send each chunk as a separate media group itemQA meee
+
+
+
+
     media_group = []
     for i, chunk in enumerate(chunks):
         media_group.append(InputMediaDocument(media=chunk, caption=f"Part {i + 1}/{len(chunks)}: {caption}"))
@@ -283,47 +287,49 @@ vi = '✔'
 failed_imported_products_counter = 0
 caption = 'https://t.me/only_sex_videos_stock\nhttps://t.me/only_girls_videos'
 
+ids = get_ids_from_csv()
 
 
-for msg_id in get_ids_from_csv():
-    with open(csv_path, encoding='utf-8') as csv_file:
-        for line in csv.DictReader(csv_file):
-            valid_images = []
-            csvLine = get_item(list(line.values()))
-            folder_path, images_path_list, msg_id = csvLine[2], csvLine[3], csvLine[0]
-            if not images_path_list:
-                logger.warning(f'[ID:{msg_id}] IMGs path list is {images_path_list} Moving to next ID')
-                continue
-            valid_files, total_files_size = image_size_validation(images_path_list)
+with open(csv_path, encoding='utf-8') as csv_file:
+    for line in csv.DictReader(csv_file):
+        valid_images = []
+        csvLine = get_item(list(line.values()))
+        folder_path, images_path_list, msg_id = csvLine[2], csvLine[3], csvLine[0]
+        if not images_path_list:
+            logger.warning(f'[ID:{msg_id}] IMGs path list is {images_path_list} Moving to next ID')
+            continue
+            #TODO - all 50 mb here must have a solution
+        valid_files, total_files_size = image_size_validation(images_path_list)
 
-            if total_files_size > 50:
-                logger.warning(f'[ID:{msg_id}] Total size is: {total_files_size} Tring more than 50Mb File')
-                continue
+        if total_files_size > 50:
+            logger.warning(f'[ID:{msg_id}] Total size is: {total_files_size} Tring more than 50Mb File')
+            continue
 
-            if msg_id.isdigit():
-                logger.debug(f'[ID:{msg_id}] IMGs path list is {valid_files} ')
-                try:
-                    resp = sendMediaGroup(items=valid_files)
-                except:
-                    logger.error(f'media group failed ID:{msg_id}')
-                if resp.status_code == 200:
-                    successRate += 1
-                    msg = f'[ID:{msg_id}] [SUCCESS] {successRate}/{errorRate + successRate}\t\t' \
-                          f'images={len(valid_images)}'
-                    # Remove non-ASCII characters
-                    clean_msg = re.sub(r'[^\x00-\x7F]+', '', msg)
-                    logger.info(clean_msg)
-                else:  # NOT 200
+        if msg_id.isdigit():
+            logger.debug(f'[ID:{msg_id}] IMGs path list is {valid_files} ')
+            try:
+                resp = sendMediaGroup(items=valid_files)
+            except:
+                logger.error(f'media group failed ID:{msg_id}')
+                resp = 'No Respone'
+            if resp.status_code == 200:
+                successRate += 1
+                msg = f'[ID:{msg_id}] [SUCCESS] {successRate}/{errorRate + successRate}\t\t' \
+                      f'images={len(valid_images)}'
+                # Remove non-ASCII characters
+                clean_msg = re.sub(r'[^\x00-\x7F]+', '', msg)
+                logger.info(clean_msg)
+            else:  # NOT 200
 
-                    errorRate += 1
-                    msg = f'[ID:{msg_id}] [FAILED] {errorRate}/{errorRate + successRate} ' \
-                          f' ERROR -> status:{resp.status_code} {resp.text}'
-                    logger.error(msg)  # NOT 200
-            else:
-                noLinkRate += 1
-                logger.warning(f"skipping failure item [ID:{id}] Images list: {images_path_list} ")
-                x = f'[ID:{msg_id}] [FAILED] {noLinkRate}\t\tlink isn\'t containing s.click\t\t'
-                logger.warning(x)
+                errorRate += 1
+                msg = f'[ID:{msg_id}] [FAILED] {errorRate}/{errorRate + successRate} ' \
+                      f' ERROR -> status:{resp.status_code} {resp.text}'
+                logger.error(msg)  # NOT 200
+        else:
+            noLinkRate += 1
+            logger.warning(f"skipping failure item [ID:{id}] Images list: {images_path_list} ")
+            x = f'[ID:{msg_id}] [FAILED] {noLinkRate}\t\tlink isn\'t containing s.click\t\t'
+            logger.warning(x)
 
 '''     FINISH      '''
 logger.warning(f'\nFINISHED - Failed Products Counter: {failed_imported_products_counter} Products')
