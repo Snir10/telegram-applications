@@ -1,14 +1,18 @@
-import configparser
-import os
+import sqlite3
+import time
 
-config_file_path = os.path.join("config_files", "news_uploader_config.ini")
-
-c = configparser.ConfigParser()
-c.read(config_file_path, encoding='utf-8')
-
-try:
-    chat_id = c['Channels']['chat_id']
-    print(f"Chat ID: {chat_id}")
-except KeyError:
-    print("Error: 'Channels' section or 'chat_id' key not found in the configuration.")
-    # Handle the error gracefully, e.g., provide a default chat_id or exit the script.
+def execute_query_with_retry(query, retries=5, delay=2):
+    for i in range(retries):
+        try:
+            conn = sqlite3.connect('your_database.db')
+            cursor = conn.cursor()
+            cursor.execute(query)
+            conn.commit()
+            conn.close()
+            return
+        except sqlite3.OperationalError as e:
+            if 'locked' in str(e).lower():
+                print(f"Database is locked, retrying in {delay} seconds...")
+                time.sleep(delay)
+            else:
+                raise

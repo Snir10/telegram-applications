@@ -1,8 +1,14 @@
+import configparser
 import os
 import shutil
 
-parentDir = '/Users/user/Desktop/Backup/'
 
+# Reading Configs
+config = configparser.ConfigParser()
+
+config.read("config_files/importer_config.ini")
+# Setting configuration values
+parentDir = config['Telegram']['parent_dir']
 
 
 if os.path.exists(parentDir):
