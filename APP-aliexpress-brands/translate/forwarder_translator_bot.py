@@ -1,3 +1,5 @@
+from time import sleep
+
 from telegram.ext import Updater, CommandHandler, CallbackQueryHandler, CallbackContext, MessageHandler, Filters
 from easygoogletranslate import EasyGoogleTranslate
 import sqlite3
@@ -119,10 +121,14 @@ def send_to_channel_callback(update, context):
             elif msg_type == "forwarded_text":
                 context.bot.send_message(chat_id=channel, text=content or caption)
 
+            # query.answer(f"Message successfully sent to {channel}.")
+
             query.edit_message_text(f"Message successfully sent to {channel}.")
         except Exception as e:
+            # query.answer(f"Failed to send the message to {channel}: {e}")
             query.edit_message_text(f"Failed to send the message to {channel}: {e}")
     else:
+        # query.answer(f"Message with ID {db_id} not found.")
         query.edit_message_text(f"Message with ID {db_id} not found.")
 def translate_callback(update, context):
     query = update.callback_query
@@ -132,25 +138,38 @@ def translate_callback(update, context):
     # Fetch the message from the database
     message = fetch_message_by_id(msg_id)
     if message:
-        msg_type, content, caption = message[1], message[2], message[3]
+        db_id, msg_type, content, caption = message
         translated_caption = translator.translate(caption) if caption else "No caption to translate."
 
         # Update the caption in the database
         update_caption(msg_id, translated_caption)
 
-        # Reply with the translated text and the updated post
-        # query.message.reply_text(f"Translated Caption for Post ID {msg_id}:\n{translated_caption}")
+        # Retrieve the sent message ID for editing
+        sent_message_id = context.user_data.get(f"msg_{msg_id}")
 
-        # Send the updated message with translated caption
-        if msg_type == "photo":
-            context.bot.send_photo(chat_id=query.message.chat_id, photo=content, caption=translated_caption)
-        elif msg_type == "video":
-            context.bot.send_video(chat_id=query.message.chat_id, video=content, caption=translated_caption)
-        elif msg_type == "document":
-            context.bot.send_document(chat_id=query.message.chat_id, document=content, caption=translated_caption)
-        elif msg_type == "forwarded_text":
-            context.bot.send_message(chat_id=query.message.chat_id, text=translated_caption)
+        try:
+            # Edit the original message caption or text
+            if msg_type == "photo":
+                context.bot.edit_message_caption(chat_id=query.message.chat_id,
+                                                 message_id=sent_message_id,
+                                                 caption=translated_caption)
+            elif msg_type == "video":
+                context.bot.edit_message_caption(chat_id=query.message.chat_id,
+                                                 message_id=sent_message_id,
+                                                 caption=translated_caption)
+            elif msg_type == "document":
+                context.bot.edit_message_caption(chat_id=query.message.chat_id,
+                                                 message_id=sent_message_id,
+                                                 caption=translated_caption)
+            elif msg_type == "forwarded_text":
+                context.bot.edit_message_text(chat_id=query.message.chat_id,
+                                              message_id=sent_message_id,
+                                              text=translated_caption)
 
+            query.answer("Translation applied to the original post.")
+        except Exception as e:
+            logger.error(f"Failed to edit message: {e}")
+            query.answer(f"Failed to edit the message: {e}")
     else:
         query.message.reply_text(f"Message with ID {msg_id} not found.")
 def delete_callback(update, context):
@@ -171,32 +190,6 @@ def receive_new_text(update, context):
 
 
 # Handle receiving the channel username (channel ID or @username)
-def receive_channel_username(update: Update, context: CallbackContext):
-    # Ensure that the message is a reply to the "Please reply with the channel username or ID" message
-    if 'send_msg_id' not in context.user_data:
-        return  # If there's no stored message ID, exit early
-
-    msg_id = context.user_data['send_msg_id']
-    # Check if the message is a reply to the previous prompt (i.e., it contains the correct reply_to_message)
-    if update.message.reply_to_message and update.message.reply_to_message.message_id == msg_id:
-        channel_username = update.message.text.strip()
-        print(f"Received channel: {channel_username}")
-
-        # Check if it's a valid channel (by trying to send a message, etc.)
-        try:
-            context.bot.send_message(chat_id=channel_username, text="Test message")
-            # Now send the content of the original message to the channel
-            message = fetch_message_by_id(msg_id)
-            if message:
-                msg_type, content, caption = message[1], message[2], message[3]
-                if msg_type == "photo":
-                    context.bot.send_photo(chat_id=channel_username, photo=content, caption=caption)
-                elif msg_type == "video":
-                    context.bot.send_video(chat_id=channel_username, video=content, caption=caption)
-                # Add more cases if necessary for other media types
-                update.message.reply_text(f"Message sent to {channel_username}.")
-        except Exception as e:
-            update.message.reply_text(f"Failed to send message to {channel_username}: {e}")
 # Handle Caption Update
 def update_caption_command(update, context):
     if not is_from_me(update):
@@ -231,16 +224,20 @@ def start(update, context):
 
     for db_id, msg_type, content, caption in messages:
         try:
+            sent_message = None
             if msg_type == "photo":
-                context.bot.send_photo(chat_id=update.message.chat_id, photo=content, caption=caption)
+                sent_message = context.bot.send_photo(chat_id=update.message.chat_id, photo=content, caption=caption)
             elif msg_type == "video":
-                context.bot.send_video(chat_id=update.message.chat_id, video=content, caption=caption)
+                sent_message = context.bot.send_video(chat_id=update.message.chat_id, video=content, caption=caption)
             elif msg_type == "document":
-                context.bot.send_document(chat_id=update.message.chat_id, document=content, caption=caption)
+                sent_message = context.bot.send_document(chat_id=update.message.chat_id, document=content,
+                                                         caption=caption)
             elif msg_type == "forwarded_text":
-                context.bot.send_message(chat_id=update.message.chat_id, text=content or caption)
-            else:
-                logger.warning(f"Unknown message type: {msg_type}")
+                sent_message = context.bot.send_message(chat_id=update.message.chat_id, text=content or caption)
+
+            if sent_message:
+                # Save sent message ID to user_data for later edits
+                context.user_data[f"msg_{db_id}"] = sent_message.message_id
 
             keyboard = [
                 [InlineKeyboardButton("Edit Text", callback_data=f"edit:{db_id}"),
@@ -256,10 +253,11 @@ def start(update, context):
             reply_markup = InlineKeyboardMarkup(keyboard)
             context.bot.send_message(chat_id=update.message.chat_id,
                                      text=f"Actions for DB Entry ID {db_id}:", reply_markup=reply_markup)
-
         except Exception as e:
             logger.error(f"Error processing message ID {db_id}: {e}")
             update.message.reply_text(f"Error processing message ID {db_id}: {e}")
+
+
 # Handle /delete command
 def delete_command(update, context):
     if not is_from_me(update):
