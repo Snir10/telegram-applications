@@ -1,0 +1,4 @@
+2025-01-08 22:17:51 [INFO] [ID:933] Document detected.
+2025-01-08 22:17:51 [ERROR] [ID:933] Error while sending media with bot: Could not find the input entity for PeerChannel(channel_id=2396932021) (PeerChannel). Please read https://docs.telethon.dev/en/stable/concepts/entities.html to find out more details.
+2025-01-08 22:17:59 [INFO] [ID:932] Document detected.
+2025-01-08 22:17:59 [ERROR] [ID:932] Error while sending media with bot: Could not find the input entity for PeerChannel(channel_id=2396932021) (PeerChannel). Please read https://docs.telethon.dev/en/stable/concepts/entities.html to find out more details.
