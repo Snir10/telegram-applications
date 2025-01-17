@@ -33,8 +33,6 @@ def save_message(msg_type, content, caption):
         logger.info(f"Message saved: {msg_type}, {caption}")
     except Exception as e:
         logger.error(f"Error saving message: {e}")
-
-
 # Delete Message from DB
 def delete_message(msg_id):
     try:
