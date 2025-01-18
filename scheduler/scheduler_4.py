@@ -45,6 +45,11 @@ def approve_request(update, context):
         # Unpack the ad data
         user_id, message, media_id, media_type, caption, campaign_rate = ad_data
 
+        if message is None:
+            print(f'\t\t move caption to msg')
+            message = caption
+
+
         # Generate a new ad_id (or let the DB handle it if auto-incremented)
         cursor.execute("""
             INSERT INTO active_ads (request_id, user_id, message, media_id, media_type, caption, campaign_rate, status)
@@ -167,14 +172,14 @@ def show_campaigns(update, context):
         ad_id, user_id, message, media_id, media_type, caption, campaign_rate, status = campaign
 
         # Determine button text and callback data
-        button_text = "Stop Campaign" if status == 'Running' else "Start Campaign"
+        button_text = "Stop Campaign 🛑" if status == 'Running' else "Start Campaign ▶️"
         toggle_button = InlineKeyboardButton(button_text, callback_data=f"toggle_{ad_id}")
 
         # Create and send the reply markup
         keyboard = [[toggle_button]]
         reply_markup = InlineKeyboardMarkup(keyboard)
         update.message.reply_text(
-            f"Campaign: AD_ID={ad_id}\nTEXT: {message}\nStatus: {status}",
+            f"Campaign: AD_ID={ad_id} \n Campaign Rate: {campaign_rate}\nTEXT: {message}\nStatus: {status}",
             reply_markup=reply_markup
         )
 # Function to toggle campaign status
@@ -208,7 +213,7 @@ def toggle_campaign_status(update, context):
             stop_scheduler_for_campaign(ad_id)
 
         # Update the button text and message
-        button_text = "Stop Campaign" if new_status == 'Running' else "Start Campaign"
+        button_text = "Stop Campaign 🛑" if new_status == 'Running' else "Start Campaign ▶️"
         toggle_button = InlineKeyboardButton(button_text, callback_data=f"toggle_{ad_id}")
         keyboard = [[toggle_button]]
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -309,9 +314,9 @@ def stop_scheduler_for_campaign(ad_id):
         logger.error(f"Failed to stop scheduler job {job_id} for campaign AD_ID={ad_id}: {e}")
 def get_persistent_menu():
     keyboard = [
-        ["/start", "/request_to_publish"],  # A button to re-trigger the /start command
-        ["/generate_voucher", "/show_requests"],  # Options for deletion and viewing posts
-        ["/show_campaigns"],  # Options for deletion and viewing posts
+        ["/start ▶️", "/request_to_publish ✍️"],  # A button to re-trigger the /start command
+        ["/generate_voucher 🎫", "/show_requests 🗒"],  # Options for deletion and viewing posts
+        ["/show_campaigns 🗒"],  # Options for deletion and viewing posts
 
         # ["/help"]  # Add other commands as necessary
     ]
@@ -342,13 +347,13 @@ def save_user_request(user_id, message, media_id, media_type, caption, campaign_
 
 def job_listener(event):
     if event.code == EVENT_JOB_ADDED:
-        logger.info(f"Job added: {event.job_id}")
+        logger.info(f"[JOB listener] Job added: {event.job_id}")
     elif event.code == EVENT_JOB_REMOVED:
-        logger.info(f"Job removed: {event.job_id}")
+        logger.info(f"[JOB listener] Job removed: {event.job_id}")
     elif event.code == EVENT_JOB_EXECUTED:
-        logger.info(f"Job executed successfully: {event.job_id}")
+        logger.info(f"[JOB listener] Job executed successfully: {event.job_id}")
     elif event.code == EVENT_JOB_ERROR:
-        logger.error(f"Job execution failed: {event.job_id}, {event.exception}")
+        logger.error(f"[JOB listener] Job execution failed: {event.job_id}, {event.exception}")
 
 
 
@@ -377,19 +382,59 @@ def schedule_task(interval, user_id, message, media_id, media_type, caption):
         logger.error(f"Error scheduling task for user {user_id}: {e}")
 
 
+import sqlite3
+
+
+def print_table_data(conn, table_name):
+    cursor = conn.cursor()
+
+    # Fetch column names
+    cursor.execute(f"PRAGMA table_info({table_name})")
+    columns = [column[1] for column in cursor.fetchall()]
+
+    # Fetch all rows
+    cursor.execute(f"SELECT * FROM {table_name}")
+    rows = cursor.fetchall()
+
+    # Print column names
+    print(f"Columns in {table_name}: {', '.join(columns)}\n")
+
+    # Print all rows
+    for row in rows:
+        print(f"{', '.join(str(value) for value in row)}")
+
+
+# Example usage (assuming you already have an open conn):
+# print_table_data(conn, "active_ads")
+
+
+# Example usage
+
+
 def send_scheduled_message(bot_token, user_id, message, media_id, media_type, caption):
-    logger.info(f"Sending scheduled message for User ID={user_id}.")
-    bot = Bot(token=bot_token)
+    logger.info(f"[START SEND] Sending scheduled message for User ID={user_id}.")
 
     # Ensure the campaign is still active
     with sqlite3.connect(DB_NAME) as conn:
         cursor = conn.cursor()
+        cursor.execute("SELECT * FROM active_ads")
+
+        rows = cursor.fetchall()
+        # print(f"Rows for User ID {user_id}: {rows}")
+
         cursor.execute("SELECT status FROM active_ads WHERE user_id = ? AND message = ?", (user_id, message))
         status = cursor.fetchone()
+        for idx, row in enumerate(rows, start=1):  # Enumerate starts at 1 by default
+            logger.debug(f"Line {idx} | {row}")
 
     if not status or status[0] != 'Running':
+        print(f'status: {status}')
+
         logger.warning(f"Campaign for User ID={user_id} is not running. Message not sent.")
         return
+
+
+    bot = Bot(token=bot_token)
 
     # Send the message
     try:
@@ -401,9 +446,9 @@ def send_scheduled_message(bot_token, user_id, message, media_id, media_type, ca
             bot.send_audio(chat_id=CHAT_ID, audio=media_id, caption=caption)
         else:
             bot.send_message(chat_id=CHAT_ID, text=message)
-        logger.info(f"Message sent successfully to User ID={user_id}.")
+        logger.info(f"[SUCCESS] Message sent successfully to User ID={user_id}.")
     except Exception as e:
-        logger.error(f"Failed to send message to User ID={user_id}: {e}")
+        logger.error(f"[FAILED] Failed to send message to User ID={user_id}: {e}")
 
 def start(update, context):
     logger.info(f"User {update.message.from_user.id} started the conversation.")
@@ -420,7 +465,7 @@ def request_to_publish(update, context):
 def handle_uploaded_message(update, context):
     user_id = update.message.from_user.id
     message = update.message.text
-    caption = update.message.caption if update.message.caption else "No caption provided."
+    caption = update.message.caption if update.message.caption else "No caption"
     media_type = None
     media_id = None
 
@@ -575,6 +620,10 @@ def show_requests(update, context):
             ad_id, user_id, message, media_id, media_type, caption, campaign_rate = request
             logger.info(f"Fetched pending requests ad: ID={ad_id}, User={user_id}, Rate={campaign_rate}")
 
+            if message is None:
+                logger.info(f'\t\t move caption to msg')
+                message = caption
+
             # Display ad preview and approval options
             if media_type == "photo":
                 update.message.reply_photo(
@@ -596,7 +645,7 @@ def show_requests(update, context):
 
             # Inline buttons for approve/decline
             keyboard = [
-                [InlineKeyboardButton("Approve", callback_data=f"approve_{ad_id}")],
+                [InlineKeyboardButton("Approve ✔️", callback_data=f"approve_{ad_id}")],
                 [InlineKeyboardButton("Decline", callback_data=f"decline_{ad_id}")]
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
@@ -619,10 +668,10 @@ DB_NAME = "bot_ads.db"
 utc_tz = timezone('utc')
 
 # Initialize logging
-logging.basicConfig(
-    format='%(asctime)s | %(levelname)s | %(message)s',
-    level=logging.INFO
-)
+# logging.basicConfig(
+#     format='%(asctime)s | %(levelname)s | %(message)s',
+#     level=logging.INFO
+# )
 
 updater = Updater(BOT_TOKEN, use_context=True)
 dispatcher = updater.dispatcher
@@ -630,7 +679,80 @@ dispatcher = updater.dispatcher
 WAITING_FOR_MESSAGE = 1
 WAITING_FOR_VOUCHER = 2
 
-logger = logging.getLogger(__name__)  # Get the logger instance
+# logger = logging.getLogger(__name__)  # Get the logger instance
+
+import logging
+
+try:
+    import colorlog
+
+    HAS_COLORLOG = True
+except ImportError:
+    HAS_COLORLOG = False
+
+
+def init_logger(name="app_logger", use_colorlog=True, level=logging.INFO):
+    """
+    Initializes a logger with optional colored output.
+
+    Args:
+        name (str): Name of the logger.
+        use_colorlog (bool): Whether to use the `colorlog` library for colored output. Defaults to True.
+        level (int): Logging level. Defaults to logging.DEBUG.
+
+    Returns:
+        logging.Logger: Configured logger instance.
+    """
+    logger = logging.getLogger(name)
+    logger.setLevel(level)
+
+    # Avoid adding multiple handlers to the logger
+    if logger.hasHandlers():
+        logger.handlers.clear()
+
+    # Create a stream handler
+    handler = logging.StreamHandler()
+
+    if use_colorlog and HAS_COLORLOG:
+        # Use `colorlog` if available and requested
+        formatter = colorlog.ColoredFormatter(
+            "%(log_color)s%(asctime)s | %(levelname)s | %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+            log_colors={
+                'DEBUG': 'cyan',
+                'INFO': 'green',
+                'WARNING': 'yellow',
+                'ERROR': 'red',
+                'CRITICAL': 'bold_red',
+            }
+        )
+    else:
+        # Use custom ANSI colors
+        class ColorFormatter(logging.Formatter):
+            COLORS = {
+                'DEBUG': '\033[96m',  # Cyan
+                'INFO': '\033[92m',  # Green
+                'WARNING': '\033[93m',  # Yellow
+                'ERROR': '\033[91m',  # Red
+                'CRITICAL': '\033[95m'  # Magenta
+            }
+            RESET = '\033[0m'
+
+            def format(self, record):
+                color = self.COLORS.get(record.levelname, self.RESET)
+                message = super().format(record)
+                return f"{color}{message}{self.RESET}"
+
+        formatter = ColorFormatter("%(asctime)s | %(levelname)s | %(message)s", "%Y-%m-%d %H:%M:%S")
+
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+
+    return logger
+
+
+
+logger = init_logger()
 # logging.getLogger('apscheduler').setLevel(logging.INFO)
 # logging.getLogger('apscheduler.jobstores').setLevel(logging.INFO)
 
@@ -645,7 +767,7 @@ jobstores = {'default': MemoryJobStore()}
 scheduler = BackgroundScheduler(tz=utc_tz, jobstores=jobstores)
 scheduler.start()
 scheduler.print_jobs()
-# scheduler.add_listener(job_listener, EVENT_JOB_ADDED | EVENT_JOB_REMOVED | EVENT_JOB_EXECUTED | EVENT_JOB_ERROR)
+scheduler.add_listener(job_listener, EVENT_JOB_ADDED | EVENT_JOB_REMOVED | EVENT_JOB_EXECUTED | EVENT_JOB_ERROR)
 
 # Add handlers for user flow
 dispatcher.add_handler(CommandHandler("start", start)) #handler for /start
